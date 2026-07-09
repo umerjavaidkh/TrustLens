@@ -34,5 +34,7 @@ htmlcov/
 infra/**/volume/
 *.log
 
-# Trained models (regenerate with scripts/train_baseline.py)
-models/
+# Trained model artifacts at repo root (regenerate with scripts/train_baseline.py).
+# NOTE: leading slash anchors this to the ROOT models/ dir only, so it does NOT
+# ignore the source package src/trustlens/models/.
+/models/
