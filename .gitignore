@@ -33,3 +33,6 @@ htmlcov/
 # Docker / infra volumes
 infra/**/volume/
 *.log
+
+# Trained models (regenerate with scripts/train_baseline.py)
+models/

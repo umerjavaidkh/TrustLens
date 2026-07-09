@@ -137,5 +137,7 @@ def roc_auc(y_true, scores) -> float:
     """Trapezoidal AUC from the ROC points."""
     fpr, tpr = roc_points(y_true, scores)
     order = np.argsort(fpr)
-    trapezoid = getattr(np, "trapezoid", np.trapz)  # np>=2 renamed trapz
+    # numpy>=2 renamed trapz -> trapezoid (and removed trapz). Pick whichever exists
+    # without eagerly referencing the missing name.
+    trapezoid = getattr(np, "trapezoid", None) or getattr(np, "trapz")
     return float(trapezoid(tpr[order], fpr[order]))
