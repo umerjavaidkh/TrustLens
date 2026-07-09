@@ -22,7 +22,7 @@ from ..models.efficientnet import (
     build_model, freeze_backbone, trainable_parameter_count, unfreeze_last_blocks)
 from ..models.dataset import RecordDataset
 from ..models.transforms import train_transforms, eval_transforms
-from ..models.splits import index_dataset, make_ood_split
+from ..models.splits import index_dataset, index_kaggle_inputs, make_ood_split
 from .evaluate import evaluate_id_vs_ood
 
 
@@ -30,6 +30,9 @@ from .evaluate import evaluate_id_vs_ood
 class TrainConfig:
     data_root: str
     ood_generator: str
+    # If True, treat each subdir of `data_root` (default /kaggle/input) as its own
+    # generator (Kaggle: one attached dataset per generator). Else scan one tree.
+    kaggle_inputs: bool = False
     img_size: int = 224
     batch_size: int = 64
     # Phase 1 (frozen backbone).
@@ -62,7 +65,8 @@ def _make_loaders(cfg: TrainConfig):
     import torch
     from torch.utils.data import DataLoader
 
-    records = index_dataset(cfg.data_root)
+    records = (index_kaggle_inputs(cfg.data_root) if cfg.kaggle_inputs
+               else index_dataset(cfg.data_root))
     if not records:
         raise RuntimeError(f"No labelled images found under {cfg.data_root}")
     split = make_ood_split(

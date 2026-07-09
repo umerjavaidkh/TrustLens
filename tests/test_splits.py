@@ -5,7 +5,7 @@ import pytest
 from PIL import Image
 
 from trustlens.models.splits import (
-    Record, index_dataset, list_generators, make_ood_split,
+    Record, index_dataset, index_kaggle_inputs, list_generators, make_ood_split,
 )
 
 
@@ -75,3 +75,26 @@ def test_deterministic_with_seed(genimage_root):
     a = make_ood_split(recs, ood_generator="ADM", seed=7)
     b = make_ood_split(recs, ood_generator="ADM", seed=7)
     assert [r.path for r in a.train] == [r.path for r in b.train]
+
+
+def test_index_kaggle_inputs_one_generator_per_dataset(tmp_path):
+    """Simulate /kaggle/input: each attached dataset dir = one generator."""
+    kaggle_input = tmp_path / "input"
+    # Two attached GenImage datasets + one unrelated dataset (should be ignored).
+    _make_genimage_tree(kaggle_input / "genimage-biggan", ["imagenet_ai_0419_biggan"])
+    _make_genimage_tree(kaggle_input / "genimage-adm", ["imagenet_ai_0508_adm"])
+    (kaggle_input / "unrelated" / "misc").mkdir(parents=True)
+    Image.new("RGB", (8, 8)).save(kaggle_input / "unrelated" / "misc" / "x.png")
+
+    recs = index_kaggle_inputs(str(kaggle_input))
+    gens = list_generators(recs)
+    # Generator label = the attached-dataset folder name; unrelated dir excluded.
+    assert set(gens) == {"genimage-biggan", "genimage-adm"}
+    # Split still works across these generators.
+    split = make_ood_split(recs, ood_generator="genimage-biggan", seed=0)
+    assert all(r.generator == "genimage-biggan" for r in split.ood)
+    assert all(r.generator != "genimage-biggan" for r in split.train)
+
+
+def test_index_kaggle_inputs_missing_root_returns_empty(tmp_path):
+    assert index_kaggle_inputs(str(tmp_path / "does_not_exist")) == []
