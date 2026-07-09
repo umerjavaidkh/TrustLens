@@ -77,23 +77,24 @@ def test_deterministic_with_seed(genimage_root):
     assert [r.path for r in a.train] == [r.path for r in b.train]
 
 
-def test_index_kaggle_inputs_one_generator_per_dataset(tmp_path):
-    """Simulate /kaggle/input: each attached dataset dir = one generator."""
+def test_index_kaggle_inputs_derives_generator_through_wrapper(tmp_path):
+    """Kaggle mounts subsets under a wrapper dir; generator must come from the
+    real GenImage folder (above train/val), not the wrapper."""
     kaggle_input = tmp_path / "input"
-    # Two attached GenImage datasets + one unrelated dataset (should be ignored).
-    _make_genimage_tree(kaggle_input / "genimage-biggan", ["imagenet_ai_0419_biggan"])
-    _make_genimage_tree(kaggle_input / "genimage-adm", ["imagenet_ai_0508_adm"])
+    # Wrapper folder 'datasets' between the mount and the generator folders
+    # (this is exactly what broke the naive first-component rule).
+    _make_genimage_tree(kaggle_input / "datasets", ["imagenet_ai_0419_biggan"])
+    _make_genimage_tree(kaggle_input / "datasets", ["imagenet_ai_0508_adm"])
     (kaggle_input / "unrelated" / "misc").mkdir(parents=True)
     Image.new("RGB", (8, 8)).save(kaggle_input / "unrelated" / "misc" / "x.png")
 
     recs = index_kaggle_inputs(str(kaggle_input))
     gens = list_generators(recs)
-    # Generator label = the attached-dataset folder name; unrelated dir excluded.
-    assert set(gens) == {"genimage-biggan", "genimage-adm"}
-    # Split still works across these generators.
-    split = make_ood_split(recs, ood_generator="genimage-biggan", seed=0)
-    assert all(r.generator == "genimage-biggan" for r in split.ood)
-    assert all(r.generator != "genimage-biggan" for r in split.train)
+    # Generator = the imagenet_ai_* folder, NOT the 'datasets' wrapper.
+    assert set(gens) == {"imagenet_ai_0419_biggan", "imagenet_ai_0508_adm"}
+    split = make_ood_split(recs, ood_generator="imagenet_ai_0419_biggan", seed=0)
+    assert all(r.generator == "imagenet_ai_0419_biggan" for r in split.ood)
+    assert all(r.generator != "imagenet_ai_0419_biggan" for r in split.train)
 
 
 def test_index_kaggle_inputs_missing_root_returns_empty(tmp_path):

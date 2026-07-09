@@ -25,6 +25,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 LABEL_DIRS = {"nature": 0, "real": 0, "ai": 1, "fake": 1}
+# Split directories sit between the generator folder and the ai/nature label dir.
+SPLIT_DIRS = {"train", "val", "valid", "validation", "test"}
 
 
 @dataclass(frozen=True)
@@ -35,9 +37,27 @@ class Record:
 
 
 def _generator_from_path(path: Path, root: Path) -> str:
-    """Generator family = first path component under the dataset root."""
+    """Generator family = the folder holding the split, i.e. the component just
+    above train/val/test (which in turn holds ai/nature).
+
+    This is robust to wrapper/nesting folders (e.g. Kaggle mounting subsets under
+    /kaggle/input/datasets/<generator>/train/ai/...). We locate the ai/nature
+    component, step up past any split dir, and take the next component up.
+    Falls back to the first component under root if no split/label is found.
+    """
     rel = path.relative_to(root)
-    return rel.parts[0] if len(rel.parts) > 1 else "unknown"
+    parts = rel.parts
+    label_idx = None
+    for i, part in enumerate(parts):
+        if part.lower() in LABEL_DIRS:
+            label_idx = i
+            break
+    if label_idx is None:
+        return parts[0] if len(parts) > 1 else "unknown"
+    j = label_idx - 1
+    while j >= 0 and parts[j].lower() in SPLIT_DIRS:
+        j -= 1
+    return parts[j] if j >= 0 else "unknown"
 
 
 def _label_from_path(path: Path) -> Optional[int]:
@@ -84,28 +104,16 @@ def index_multi(roots: Sequence[str],
 
 
 def index_kaggle_inputs(input_root: str = "/kaggle/input") -> List[Record]:
-    """Index every attached Kaggle dataset as its own generator family.
+    """Index everything under `/kaggle/input`, deriving the generator family from
+    the folder above the split (robust to Kaggle's wrapper/nesting folders).
 
-    Treats each immediate subdirectory of `/kaggle/input` as one generator and
-    keeps only those that actually contain ai/nature (or real/fake) images, so
-    unrelated attached datasets are ignored.
+    Unrelated attached datasets (no ai/nature dirs) contribute nothing. Equivalent
+    to `index_dataset(input_root)` — kept as a named entry point for notebooks.
     """
     root = Path(input_root)
     if not root.exists():
         return []
-    records: List[Record] = []
-    for gen_dir in sorted(p for p in root.iterdir() if p.is_dir()):
-        found = 0
-        for p in gen_dir.rglob("*"):
-            if p.suffix.lower() not in IMG_EXTS:
-                continue
-            label = _label_from_path(p)
-            if label is None:
-                continue
-            records.append(Record(str(p), label, gen_dir.name))
-            found += 1
-        # (dirs with no labelled images contribute nothing)
-    return records
+    return index_dataset(input_root)
 
 
 def list_generators(records: Sequence[Record]) -> List[str]:
